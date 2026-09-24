@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { Eta } from "../src/index";
@@ -22,18 +23,25 @@ This is a partial.
 Hi Test Runner`,
     );
 
-    // The cache is indexed by {filename, path, root, views} (JSON.stringify ignores keys with undefined as their value)
+    // The cache is indexed by {filename, path, views, extension} (JSON.stringify ignores keys with undefined as their value)
+    // and each entry maps to the canonical (realpath) location of the template file.
 
     // Filepath caching is based on the premise that given the same path, includer filename, root directory, and views directory (or directories)
     // the getPath function will always return the same result (assuming that caching is enabled and we're not expecting the templates to change)
 
-    const pathToPartial = `{"filename":${JSON.stringify(path.join(viewsDir, "has-include.eta"))},"path":"./partial","views":${JSON.stringify(viewsDir)}}`;
+    const resolvedViews = path.resolve(viewsDir);
+    const canonical = (name: string) => fs.realpathSync(path.join(viewsDir, name));
 
-    const pathToSimple = `{"filename":${JSON.stringify(path.join(viewsDir, "partial.eta"))},"path":"./simple","views":${JSON.stringify(viewsDir)}}`;
+    const pathToHasInclude = `{"path":"has-include","views":${JSON.stringify(resolvedViews)},"extension":".eta"}`;
+
+    const pathToPartial = `{"filename":${JSON.stringify(canonical("has-include.eta"))},"path":"./partial","views":${JSON.stringify(resolvedViews)},"extension":".eta"}`;
+
+    const pathToSimple = `{"filename":${JSON.stringify(canonical("partial.eta"))},"path":"./simple","views":${JSON.stringify(resolvedViews)},"extension":".eta"}`;
 
     expect(eta.filepathCache).toEqual({
-      [pathToPartial]: path.join(viewsDir, "partial.eta"),
-      [pathToSimple]: path.join(viewsDir, "simple.eta"),
+      [pathToHasInclude]: canonical("has-include.eta"),
+      [pathToPartial]: canonical("partial.eta"),
+      [pathToSimple]: canonical("simple.eta"),
     });
   });
 });
