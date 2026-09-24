@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -22,18 +23,27 @@ This is a partial.
 Hi Test Runner`,
     );
 
-    // The cache is indexed by {filename, path, root, views} (JSON.stringify ignores keys with undefined as their value)
+    // The cache is indexed by {filename, path, views, ext} (JSON.stringify ignores keys with undefined as their value)
 
     // Filepath caching is based on the premise that given the same path, includer filename, root directory, and views directory (or directories)
     // the getPath function will always return the same result (assuming that caching is enabled and we're not expecting the templates to change)
 
-    const pathToPartial = `{"filename":${JSON.stringify(path.join(viewsDir, "has-include.eta"))},"path":"./partial","views":${JSON.stringify(viewsDir)}}`;
+    // Resolved values are canonical (real) paths, so every spelling of the same file maps to a single identity.
+    // Cache keys carry the lexical (absolute) views root, values carry the canonical path.
+    const lexicalViews = path.resolve(viewsDir);
+    const canonical = (name: string) =>
+      fs.realpathSync(path.join(viewsDir, name));
 
-    const pathToSimple = `{"filename":${JSON.stringify(path.join(viewsDir, "partial.eta"))},"path":"./simple","views":${JSON.stringify(viewsDir)}}`;
+    const pathToIndex = `{"path":"has-include","views":${JSON.stringify(lexicalViews)},"ext":".eta"}`;
+
+    const pathToPartial = `{"filename":${JSON.stringify(canonical("has-include.eta"))},"path":"./partial","views":${JSON.stringify(lexicalViews)},"ext":".eta"}`;
+
+    const pathToSimple = `{"filename":${JSON.stringify(canonical("partial.eta"))},"path":"./simple","views":${JSON.stringify(lexicalViews)},"ext":".eta"}`;
 
     expect(eta.filepathCache).toEqual({
-      [pathToPartial]: path.join(viewsDir, "partial.eta"),
-      [pathToSimple]: path.join(viewsDir, "simple.eta"),
+      [pathToIndex]: canonical("has-include.eta"),
+      [pathToPartial]: canonical("partial.eta"),
+      [pathToSimple]: canonical("simple.eta"),
     });
   });
 });

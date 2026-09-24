@@ -27,61 +27,103 @@ export function resolvePath(
   templatePath: string,
   options?: Partial<Options>,
 ): string {
-  let resolvedFilePath = "";
+  const config = this.config;
 
-  const views = this.config.views;
-
-  if (!views) {
+  if (!config.views) {
     throw new EtaFileResolutionError("Views directory is not defined");
   }
 
-  const baseFilePath = options?.filepath;
-  const defaultExtension =
-    this.config.defaultExtension === undefined
-      ? ".eta"
-      : this.config.defaultExtension;
+  // Normalize the views root to an absolute path so that the resolved
+  // identity does not depend on the process cwd or on how the root was spelled.
+  const views = path.resolve(config.views);
 
-  // how we index cached template paths
+  // Canonical views root (symlinks and on-disk casing resolved). All
+  // resolution happens in this space so that an includer's canonical path
+  // and the configured root are always comparable. Falls back to the lexical
+  // root when the views directory does not exist (yet).
+  const realViews = tryRealpath(views) ?? views;
+
+  // The including template's own path, canonicalized the same way so that
+  // relative includes resolve inside the same space as the views root.
+  const baseFilePath = options?.filepath
+    ? (tryRealpath(path.resolve(options.filepath)) ??
+      path.resolve(options.filepath))
+    : undefined;
+
+  const defaultExtension =
+    config.defaultExtension === undefined ? ".eta" : config.defaultExtension;
+
+  // How we index cached template paths. Every config value that can change
+  // the resolution result is part of the key, so a config change (e.g. a new
+  // `views` root or `defaultExtension`) produces a new identity instead of
+  // polluting entries created under the old config.
   const cacheIndex = JSON.stringify({
     filename: baseFilePath, // filename of the template which called includeFile()
     path: templatePath,
-    views: this.config.views,
+    views,
+    ext: defaultExtension,
   });
 
-  templatePath += path.extname(templatePath) ? "" : defaultExtension;
-
-  // if the file was included from another template
-  if (baseFilePath) {
-    // check the cache
-
-    if (this.config.cacheFilepaths && this.filepathCache[cacheIndex]) {
-      return this.filepathCache[cacheIndex];
-    }
-
-    const absolutePathTest = absolutePathRegExp.exec(templatePath);
-
-    if (absolutePathTest?.length) {
-      const formattedPath = templatePath.replace(/^\/*|^\\*/, "");
-      resolvedFilePath = path.join(views, formattedPath);
-    } else {
-      resolvedFilePath = path.join(path.dirname(baseFilePath), templatePath);
-    }
-  } else {
-    resolvedFilePath = path.join(views, templatePath);
+  if (config.cacheFilepaths && this.filepathCache[cacheIndex]) {
+    return this.filepathCache[cacheIndex];
   }
 
-  if (dirIsChild(views, resolvedFilePath)) {
-    // add resolved path to the cache
-    if (baseFilePath && this.config.cacheFilepaths) {
-      this.filepathCache[cacheIndex] = resolvedFilePath;
-    }
+  // Template names accept both POSIX and Windows separators; both are
+  // normalized so that `sub/tpl` and `sub\tpl` denote the same template.
+  let normalizedName = templatePath.replace(/\\/g, "/");
 
-    return resolvedFilePath;
+  if (!path.posix.extname(normalizedName)) normalizedName += defaultExtension;
+
+  let resolvedFilePath = "";
+
+  // A leading separator means "relative to the views root", matching Eta's
+  // historical treatment of absolute-looking template names. Otherwise, a
+  // template included from another template resolves relative to the
+  // including file's directory.
+  if (baseFilePath && !normalizedName.startsWith("/")) {
+    resolvedFilePath = path.join(path.dirname(baseFilePath), normalizedName);
   } else {
+    resolvedFilePath = path.join(realViews, normalizedName.replace(/^\/+/, ""));
+  }
+
+  // Lexical containment: reject `..` traversal outside the views root. Both
+  // the configured and the canonical root are accepted here; the canonical
+  // check below is the authoritative boundary for files that exist.
+  if (
+    !dirIsChild(views, resolvedFilePath) &&
+    !dirIsChild(realViews, resolvedFilePath)
+  ) {
     throw new EtaFileResolutionError(
       `Template '${templatePath}' is not in the views directory`,
     );
   }
+
+  // Canonical identity: resolve symlinks and on-disk casing so that the same
+  // file always maps to a single cache key, no matter how its path was
+  // spelled. On case-sensitive filesystems different casing stays distinct;
+  // on case-insensitive filesystems (macOS, Windows) casing variants unify.
+  const canonicalPath = tryRealpath(resolvedFilePath);
+
+  if (canonicalPath === null) {
+    // The file does not exist (yet). Return the lexical path so readFile can
+    // raise the standard resolution error, and cache nothing: a failed lookup
+    // leaves no state behind and the same input can be retried later.
+    return resolvedFilePath;
+  }
+
+  // Real containment: a symlink inside the views root may not escape it.
+  if (!dirIsChild(realViews, canonicalPath)) {
+    throw new EtaFileResolutionError(
+      `Template '${templatePath}' is not in the views directory`,
+    );
+  }
+
+  // Only successful, canonical resolutions are cached.
+  if (config.cacheFilepaths) {
+    this.filepathCache[cacheIndex] = canonicalPath;
+  }
+
+  return canonicalPath;
 }
 
 function dirIsChild(parent: string, dir: string) {
@@ -89,4 +131,10 @@ function dirIsChild(parent: string, dir: string) {
   return relative && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-const absolutePathRegExp = /^\\|^\//;
+function tryRealpath(filePath: string): string | null {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    return null;
+  }
+}

@@ -12,7 +12,6 @@ docs
 
 dist
 
-package-lock.json
 yarn.lock
 
 # --- 依赖与构建产物（不进交付快照）---

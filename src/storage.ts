@@ -13,6 +13,9 @@ export class Cacher<T> {
   get(key: string): T {
     return this.cache[key];
   }
+  keys(): string[] {
+    return Object.keys(this.cache);
+  }
   remove(key: string): void {
     delete this.cache[key];
   }
