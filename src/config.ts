@@ -24,7 +24,11 @@ export interface EtaConfig {
   /** Whether or not to cache templates if `name` or `filename` is passed */
   cache: boolean;
 
-  /** Holds cache of resolved filepaths. Set to `false` to disable. */
+  /** Holds cache of resolved filepaths. Set to `false` to disable.
+   * Keys include the includer's canonical path, the include path, the
+   * canonical views root and the default extension, so changing `views` or
+   * `defaultExtension` creates new cache identities instead of polluting
+   * entries written under the previous configuration. */
   cacheFilepaths: boolean;
 
   /** Object specifying custom tags. Keys are tag prefixes, values are functions which take tag content and return a string. */
@@ -76,10 +80,19 @@ export interface EtaConfig {
   /** Name of the data object. Default `it` */
   varName: string;
 
-  /** Directory that contains templates */
+  /** Directory that contains templates.
+   * Template paths are resolved to a canonical identity (absolute, symlinks
+   * resolved) confined to this directory: names that escape the root — via
+   * `..` segments or symlinks pointing outside — are rejected with an
+   * `EtaFileResolutionError`. Template names use `/` as separator; a leading
+   * `/` or `\` makes the name relative to the views root. Cache identities
+   * preserve casing (like Node's module cache): on case-sensitive filesystems
+   * a wrong casing does not resolve, on case-insensitive filesystems each
+   * casing gets its own entry. */
   views?: string;
 
-  /** Control template file extension defaults. Default `.eta` */
+  /** Control template file extension defaults. Default `.eta`. Part of the
+   * filepath cache identity, so switching it never reuses stale resolutions. */
   defaultExtension?: string;
 }
 

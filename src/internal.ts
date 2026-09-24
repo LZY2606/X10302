@@ -52,6 +52,11 @@ export class Eta {
   renderStringAsync = renderStringAsync;
 
   filepathCache: Record<string, string> = {};
+  // Memo of canonical filesystem identities computed by resolvePath():
+  // maps a resolved path as spelled to its absolute, symlink-free identity.
+  // Shares the assumption of `cacheFilepaths` that the filesystem layout is
+  // stable for the lifetime of the instance.
+  canonicalPathCache: Record<string, string> = {};
   templatesSync: Cacher<TemplateFunction> = new Cacher<TemplateFunction>({});
   templatesAsync: Cacher<TemplateFunction> = new Cacher<TemplateFunction>({});
 

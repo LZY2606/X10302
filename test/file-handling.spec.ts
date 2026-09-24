@@ -22,14 +22,16 @@ This is a partial.
 Hi Test Runner`,
     );
 
-    // The cache is indexed by {filename, path, root, views} (JSON.stringify ignores keys with undefined as their value)
+    // The cache is indexed by {filename, path, views, ext} — the canonical
+    // includer path, the include path, the canonical views root and the
+    // default extension (JSON.stringify ignores keys with undefined as their value)
 
     // Filepath caching is based on the premise that given the same path, includer filename, root directory, and views directory (or directories)
     // the getPath function will always return the same result (assuming that caching is enabled and we're not expecting the templates to change)
 
-    const pathToPartial = `{"filename":${JSON.stringify(path.join(viewsDir, "has-include.eta"))},"path":"./partial","views":${JSON.stringify(viewsDir)}}`;
+    const pathToPartial = `{"filename":${JSON.stringify(path.join(viewsDir, "has-include.eta"))},"path":"./partial","views":${JSON.stringify(viewsDir)},"ext":".eta"}`;
 
-    const pathToSimple = `{"filename":${JSON.stringify(path.join(viewsDir, "partial.eta"))},"path":"./simple","views":${JSON.stringify(viewsDir)}}`;
+    const pathToSimple = `{"filename":${JSON.stringify(path.join(viewsDir, "partial.eta"))},"path":"./simple","views":${JSON.stringify(viewsDir)},"ext":".eta"}`;
 
     expect(eta.filepathCache).toEqual({
       [pathToPartial]: path.join(viewsDir, "partial.eta"),
